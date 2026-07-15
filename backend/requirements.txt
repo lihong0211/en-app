@@ -1,6 +1,5 @@
 marshmallow~=4.0.0
 PyMySQL~=1.1.1
-dotenv~=0.9.9
 python-dotenv~=1.1.1
 SQLAlchemy~=2.0.43
 uvicorn~=0.35.0
@@ -8,7 +7,5 @@ fastapi~=0.116.1
 mitmproxy~=12.1.1
 rich~=14.1.0
 pydantic~=2.11.7
-Flask~=3.1.0
 cx_Freeze~=8.4.0
-bcrypt~=4.3.0
-cx_Freeze~=8.4.0
+requests~=2.32.5

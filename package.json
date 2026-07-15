@@ -5,9 +5,9 @@
   "main": "src/main/main.js",
   "type": "module",
   "scripts": {
-    "dev": "NODE_ENV=development electron . && cd src/renderer pnpm run serve",
+    "dev": "NODE_ENV=development electron .",
     "build": "npm run build:python:mac && npm run build:mac",
-    "build:python:mac": "cd backend && pyinstaller --onefile --name=python-backend --target-arch universal2 --distpath ../resources/python main.py",
+    "build:python:mac": "cd backend &&  pyinstaller python-backend.spec",
     "build:mac": "electron-builder --mac --x64 --arm64",
     "pack:mac": "electron-builder --mac --dir"
   },
@@ -26,14 +26,19 @@
       {
         "from": "resources/python",
         "to": "python",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": {
         "target": "default",
-        "arch": ["x64", "arm64"]
+        "arch": [
+          "x64",
+          "arm64"
+        ]
       },
       "icon": "resources/icon.icns",
       "entitlements": "build/entitlements.mac.plist",
@@ -45,7 +50,7 @@
     }
   },
   "devDependencies": {
-    "electron": "^27.0.0",
+    "electron": "^37.0.0",
     "electron-builder": "^24.6.4"
   }
 }

@@ -1,11 +1,14 @@
-import { spawn } from 'child_process'
+import { spawn, execFile } from 'child_process'
 import { join } from 'path'
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, clipboard, screen, globalShortcut } from 'electron'
 import { devConfig } from '../../config/dev.js'
 
 let pythonProcess = null
 let mainWindow = null
 let vueDevServer = null
+let popupWindow = null
+let popupCloseTimer = null
+let isCapturing = false
 
 function createWindow() {
   // 创建浏览器窗口的代码
@@ -15,9 +18,25 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
-    }
+    },
+    // 关键配置：启用透明窗口
+    // transparent: true,
+    // 可选：无边框窗口以获得更好的视觉效果
+    frame: true,
+    // 可选：允许窗口背景透明
+    // backgroundColor: '#00000000'
   })
-  
+  // 在主进程中使用
+  mainWindow.setVibrancy('green'); // macOS专属效果
+  mainWindow.setOpacity(1); // 设置整体不透明度
+  // 悬浮于所有虚拟桌面和全屏应用之上
+  mainWindow.setAlwaysOnTop(true, 'screen-saver')
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+
   // 加载应用的其余部分
   const isDev = process.env.NODE_ENV === 'development'
   if (isDev) {
@@ -149,11 +168,13 @@ function startPythonBackend() {
   if (isDev) {
     // 开发环境
     const { pythonPath, backendPath, workingDir } = devConfig
+    const venvBin = join(cwd, 'backend', '.venv', 'bin')
     pythonProcess = spawn(pythonPath, [backendPath], {
       cwd: workingDir,
       env: {
         ...process.env,
-        VIRTUAL_ENV: join(cwd, 'backend', '.venv')
+        VIRTUAL_ENV: join(cwd, 'backend', '.venv'),
+        PATH: `${venvBin}:${process.env.PATH}`
       }
     })
   } else {
@@ -172,54 +193,273 @@ function startPythonBackend() {
 
   pythonProcess.stdout.on('data', (data) => {
     console.log(`Python stdout: ${data}`)
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('python-stdout', data.toString())
     }
   })
 
   pythonProcess.stderr.on('data', (data) => {
     console.error(`Python stderr: ${data}`)
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('python-stderr', data.toString())
     }
   })
 
   pythonProcess.on('close', (code) => {
     console.log(`Python process exited with code ${code}`)
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('python-exited', code)
     }
   })
 
   pythonProcess.on('error', (err) => {
     console.error('Failed to start Python process:', err)
-    if (mainWindow) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('python-error', err.message)
     }
   })
+}
+
+// 模拟按下 Cmd+C，把当前选中内容拷进剪贴板（需要辅助功能权限）
+function simulateCopy() {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'osascript',
+      ['-e', 'tell application "System Events" to keystroke "c" using command down'],
+      (err) => (err ? reject(err) : resolve())
+    )
+  })
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function closePopup() {
+  clearTimeout(popupCloseTimer)
+  if (popupWindow) {
+    popupWindow.close()
+    popupWindow = null
+  }
+}
+
+const POPUP_WIDTH = 320
+const POPUP_MAX_HEIGHT = 240
+const POPUP_MIN_HEIGHT = 70
+
+// 在鼠标附近打开（或复用）悬浮卡片窗口
+function ensurePopupWindow() {
+  if (popupWindow) return popupWindow
+
+  const cursor = screen.getCursorScreenPoint()
+  popupWindow = new BrowserWindow({
+    x: cursor.x + 12,
+    y: cursor.y + 12,
+    width: POPUP_WIDTH,
+    height: POPUP_MAX_HEIGHT,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: { contextIsolation: true }
+  })
+  popupWindow.setAlwaysOnTop(true, 'screen-saver')
+  popupWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // 点击卡片以外的任何地方（窗口失焦）就关掉
+  popupWindow.on('blur', closePopup)
+  popupWindow.on('closed', () => {
+    popupWindow = null
+  })
+
+  return popupWindow
+}
+
+// 渲染悬浮卡片内容：loading / 查词结果 / 报错，三种状态复用同一个窗口
+function renderPopup({ loading, word, en_pronunciation, us_pronunciation, meaning, saved, errorMsg }) {
+  const win = ensurePopupWindow()
+  clearTimeout(popupCloseTimer)
+
+  let bodyHtml
+  if (loading) {
+    bodyHtml = `<div class="word">${escapeHtml(word)}</div><div class="loading">查询中...</div>`
+  } else if (errorMsg) {
+    bodyHtml = `<div class="word">${escapeHtml(word || '')}</div><div class="error">${escapeHtml(errorMsg)}</div>`
+  } else {
+    const wordDataJson = JSON.stringify({ word, en_pronunciation, us_pronunciation, meaning }).replace(/</g, '\\u003c')
+    bodyHtml = `
+      <div class="header">
+        <div class="word">${escapeHtml(word)}</div>
+        <button id="favBtn" class="fav-btn${saved ? ' saved' : ''}">${saved ? '★' : '☆'}</button>
+      </div>
+      <div class="phonetic">英 ${escapeHtml(en_pronunciation)}　美 ${escapeHtml(us_pronunciation)}</div>
+      <ul class="meanings">
+        ${meaning.map((m) => `<li><span class="type">${escapeHtml(m.type)}</span>${escapeHtml(m.content)}</li>`).join('')}
+      </ul>
+      <script>
+        (function () {
+          const wordData = ${wordDataJson}
+          const btn = document.getElementById('favBtn')
+          btn.addEventListener('click', async () => {
+            if (btn.classList.contains('saved')) return
+            btn.disabled = true
+            try {
+              const res = await fetch('http://127.0.0.1:8000/words/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(wordData)
+              })
+              const data = await res.json()
+              if (data.code === 200 || data.msg === '单词已存在') {
+                btn.textContent = '★'
+                btn.classList.add('saved')
+              }
+            } catch (e) {
+              // 静默失败，按钮恢复可点击
+            } finally {
+              btn.disabled = false
+            }
+          })
+        })()
+      </script>
+    `
+  }
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+          background: #ffffff;
+          color: #1a1a1a;
+          padding: 16px 18px;
+          border-radius: 14px;
+          overflow: hidden;
+          box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }
+        .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+        .word { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .fav-btn {
+          border: none; background: none; cursor: pointer; font-size: 20px;
+          color: #c9ccd1; padding: 0; line-height: 1; margin-top: 2px;
+        }
+        .fav-btn.saved { color: #f5a623; cursor: default; }
+        .phonetic { font-size: 13px; color: #6b7280; margin-bottom: 10px; }
+        .meanings { list-style: none; margin: 0; padding: 0; font-size: 14px; line-height: 1.7; max-height: 140px; overflow-y: auto; }
+        .type { color: #2563eb; margin-right: 6px; font-weight: 600; }
+        .loading, .error { font-size: 13px; color: #6b7280; }
+      </style>
+    </head>
+    <body>${bodyHtml}</body>
+    </html>
+  `
+
+  win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html)).then(async () => {
+    if (win.isDestroyed()) return
+    const contentHeight = await win.webContents.executeJavaScript('document.body.scrollHeight')
+    if (win.isDestroyed()) return
+    const height = Math.min(Math.max(contentHeight, POPUP_MIN_HEIGHT), POPUP_MAX_HEIGHT)
+    win.setContentSize(POPUP_WIDTH, height)
+    win.show()
+  }).catch((err) => {
+    console.error('弹窗渲染失败:', err)
+    closePopup()
+  })
+
+  // 兜底：就算没触发失焦，也不会一直挂在屏幕上
+  popupCloseTimer = setTimeout(closePopup, 8000)
+}
+
+// 划词查词：模拟复制 -> 读剪贴板 -> 调后端查词接口 -> 还原剪贴板
+async function captureSelectionAndLookup() {
+  if (isCapturing) return
+  isCapturing = true
+
+  const originalClipboard = clipboard.readText()
+
+  try {
+    await simulateCopy()
+    // 等待系统完成复制动作
+    await new Promise((r) => setTimeout(r, 150))
+
+    const selected = clipboard.readText().trim()
+
+    // 还原剪贴板，不影响用户原本复制的内容
+    clipboard.writeText(originalClipboard)
+
+    // 过滤掉空选中、多行/长句（只处理单词/短语查询）
+    if (!selected || selected === originalClipboard || selected.length > 30 || /\n/.test(selected)) {
+      return
+    }
+
+    // 立即弹出卡片显示 loading 状态，不等接口返回
+    renderPopup({ loading: true, word: selected })
+
+    const res = await fetch('http://127.0.0.1:8000/words/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word: selected })
+    })
+    const data = await res.json()
+    console.log('划词查词结果:', data)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('word-lookup-result', data)
+    }
+
+    if (data.code === 200 && data.data) {
+      renderPopup(data.data)
+    } else {
+      renderPopup({ word: selected, errorMsg: data.msg || '查词失败' })
+    }
+  } catch (err) {
+    console.error('划词查词失败:', err)
+    clipboard.writeText(originalClipboard)
+    renderPopup({ errorMsg: '查词失败' })
+  } finally {
+    isCapturing = false
+  }
 }
 
 app.whenReady().then(() => {
   // 在开发环境下可选：尝试自动启动Vue开发服务器
   if (process.env.NODE_ENV === 'development') {
     startVueDevServer();
-    
+    startPythonBackend();
+
     // 给Vue服务器一些启动时间，然后再创建窗口
     setTimeout(() => {
       createWindow();
-      startPythonBackend();
     }, 3000);
   } else {
     // 生产环境直接启动
     createWindow();
-    startPythonBackend();
   }
-  
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })
+
+  // 全局热键：划词后按这个快捷键查词存库
+  const shortcutOk = globalShortcut.register('CommandOrControl+Shift+D', () => {
+    console.log('热键触发')
+    captureSelectionAndLookup()
+  })
+  console.log('热键注册' + (shortcutOk ? '成功' : '失败：可能被其他程序占用'))
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })
 
 app.on('window-all-closed', () => {

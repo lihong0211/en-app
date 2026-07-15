@@ -9,6 +9,9 @@ TARGET_API = "https://fanyi.baidu.com/client/translate/word"
 
 API_BASE_URL = "http://localhost:8000"
 
+# 只拦截这个进程的流量（百度翻译桌面客户端），不走系统全局代理
+TARGET_PROCESS = "百度翻译"
+
 
 def save_word(translation_result):
     try:
@@ -33,21 +36,21 @@ def save_word(translation_result):
 
 def run_monitor():
     """
-    启动 mitmdump 进程（在前台运行）
+    启动 mitmdump 进程（本机进程级拦截，仅拦截 TARGET_PROCESS，不设置系统代理）
     """
     script_path = os.path.abspath(__file__)
     cmd = [
         "mitmdump",
+        "--mode",
+        f"local:{TARGET_PROCESS}",
         "--set",
         "upstream_cert=false",
         "--ssl-insecure",
-        "-p",
-        "6124",
         "-s",
         script_path,
     ]
 
-    print(f"启动 mitmdump: {' '.join(cmd)}")
+    print(f"启动 mitmdump（进程级拦截 {TARGET_PROCESS}）: {' '.join(cmd)}")
     # 在前台运行，不捕获输出
     process = subprocess.Popen(cmd)
     return process

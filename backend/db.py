@@ -1,27 +1,27 @@
 # db.py
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
-from sqlalchemy.ext.declarative import declarative_base
 import os
+from urllib.parse import quote_plus
 
-# 数据库连接URL，根据环境变量配置
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", "sqlite:///./test.db"  # 默认使用SQLite
-)
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker, scoped_session,declarative_base
+
+load_dotenv()
+
+DB_HOST = os.getenv('DB_HOST', 'localhost')
+DB_PORT = os.getenv('DB_PORT', '3306')
+DB_USER = os.getenv('DB_USER', 'root')
+DB_PASSWORD = quote_plus(os.getenv('DB_PASSWORD', ''))
+DB_NAME = os.getenv('DB_NAME', 'english_new')
 
 # 创建数据库引擎
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args=(
-        {"check_same_thread": False}
-        if SQLALCHEMY_DATABASE_URL.startswith("sqlite")
-        else {}
-    ),
-    pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
-    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "10")),
-    pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "1800")),
-    pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
-    echo=os.getenv("DB_ECHO", "false").lower() == "true",
+    f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}',
+    pool_size=20,
+    max_overflow=10,
+    pool_recycle=1800,
+    pool_timeout=30,
+    echo=True,
     pool_pre_ping=True,
 )
 
@@ -35,10 +35,6 @@ Base = declarative_base()
 
 # 依赖注入函数（FastAPI风格）
 def get_db():
-    """
-    获取数据库会话的依赖函数
-    使用方式: db: Session = Depends(get_db)
-    """
     session = Session()
     try:
         yield session

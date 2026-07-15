@@ -3,5 +3,6 @@ body {
     Arial, sans-serif;
   margin: auto;
   max-width: 38rem;
-  padding: 2rem;
+  margin: 0!important;
+  padding: 0!important;
 }

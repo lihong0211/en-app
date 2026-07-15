@@ -1,54 +1,40 @@
-from marshmallow import fields
-from sqlalchemy import Column, Integer, String, DateTime
-from sqlalchemy.dialects.mysql import TEXT
-
-from app.app import db
-from model.common.my_model import MySchema, MyModel
-from utils import get_datetime_now
-
-
-class Doctor(db.Model, MyModel):
-    __tablename__ = "doctor"
-    phone = Column(String(15), nullable=False, comment="手机号")
-    platform = Column(
-        Integer, nullable=False, default=0, comment="平台：1、拼多多,2、阿里健康"
-    )
-    doctor_name = Column(String(30), nullable=False, comment="医生账户名称")
-    phone_user_name = Column(String(30), nullable=False, comment="钉钉用户id")
-    role = Column(
-        Integer,
-        nullable=False,
-        default=1,
-        comment="角色:1、人工医生，2、开方医生，3、引流医生",
-    )
-    remark = Column(String(200), nullable=False, comment="备注信息")
-    work_group = Column(Integer, nullable=False, default=0, comment="工作组：1,2组等等")
-    transfer_type = Column(
-        Integer,
-        nullable=False,
-        default=0,
-        comment="转诊类型： 0自动转诊，1 手动转诊，2 不转诊",
-    )
-    device_code = Column(String(30), nullable=False, default="", comment="设备号")
-    transfer_id = Column(Integer, nullable=False, default=0, comment="转诊医生id")
-    transfer_name = Column(
-        String(30), nullable=False, default="", comment="转诊医生名称"
-    )
-    user_name = Column(String(30), nullable=False, default="", comment="医生名称")
-    team = Column(String(50), nullable=False, default="", comment="团队名称")
+# words.py
+from sqlalchemy import Column, String, JSON
+from pydantic import Field, BaseModel
+from typing import List
+from .base import MyModel, BaseSchema
+from db import Base
 
 
-class DoctorSchema(MySchema):
-    phone = fields.String()
-    platform = fields.Integer()
-    doctor_name = fields.String()
-    phone_user_name = fields.String()
-    role = fields.Integer()
-    remark = fields.String()
-    work_group = fields.Integer()
-    transfer_type = fields.Integer()
-    device_code = fields.String()
-    transfer_id = fields.Integer()
-    transfer_name = fields.String()
-    user_name = fields.String()
-    team = fields.String()
+# SQLAlchemy 用户模型
+class WordModel(Base, MyModel):
+    __tablename__ = "words"
+    word = Column(String(30), unique=True, index=True, nullable=False)
+    en_pronunciation = Column(String(30), unique=False, index=False, nullable=True)
+    us_pronunciation = Column(String(30), unique=False, index=False, nullable=True)
+
+
+# 定义含义的子模型
+class MeaningItem(BaseModel):
+    type: str = Field(..., description="词性类型，如 vt., adj. 等")
+    content: str = Field(..., description="含义内容")
+
+
+# Pydantic 模型
+class WordBase(BaseSchema):
+    word: str = Field(..., min_length=1, max_length=30)
+    en_pronunciation: str = Field(..., min_length=1, max_length=30)
+    us_pronunciation: str = Field(..., min_length=1, max_length=30)
+    meaning: List[MeaningItem] = Field(..., description="单词含义列表")
+
+
+# 用于创建和响应的模型
+class WordCreate(WordBase):
+    pass
+
+
+class WordResponse(WordBase):
+    id: int
+
+    class Config:
+        orm_mode = True

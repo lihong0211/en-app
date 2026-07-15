@@ -1,15 +1,14 @@
 <template>
-  <img alt="Vue logo" src="./assets/logo.png">
-  <HelloWorld msg="Welcome to Your Vue.js App"/>
+  <Desk />
 </template>
 
 <script>
-import HelloWorld from './components/HelloWorld.vue'
+import Desk from './components/Desk.vue'
 
 export default {
   name: 'App',
   components: {
-    HelloWorld
+    Desk
   }
 }
 </script>
@@ -21,6 +20,12 @@ export default {
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
   color: #2c3e50;
-  margin-top: 60px;
+  background: transparent;
+}
+
+body {
+  background: rgba(255, 255, 255, 0.1) !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 </style>

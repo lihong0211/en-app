@@ -4,7 +4,6 @@ from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.mysql import INTEGER
 from sqlalchemy.orm import Session
 from typing import Optional, Type, TypeVar, Any, Dict, List
-from pydantic import BaseModel
 
 # 定义类型变量
 T = TypeVar("T", bound="MyModel")
@@ -18,8 +17,8 @@ class MyModel:
     __tablename__ = "--"
     deleted_at_value = None
     id = Column(INTEGER(11), primary_key=True)
-    create_at = Column(DateTime(), default=get_datetime_now, comment="创建时间")
-    update_at = Column(DateTime(), default=get_datetime_now, comment="修改时间")
+    created_at = Column(DateTime(), default=get_datetime_now, comment="创建时间")
+    updated_at = Column(DateTime(), default=get_datetime_now, comment="修改时间")
     deleted_at = Column(
         DateTime(), nullable=True, name="deleted_at", comment="删除时间"
     )
@@ -64,7 +63,7 @@ class MyModel:
             if (
                 hasattr(cls, key)
                 and value is not None
-                and key not in ["id", "create_at", "update_at", "deleted_at"]
+                and key not in ["id", "created_at", "updated_at", "deleted_at"]
             ):
                 update_cols[key] = value
 
@@ -89,8 +88,11 @@ class MyModel:
         if criterion is None:
             criterion = {}
         query = session.query(cls)
+        print(",,,,,", query)
         order_by_val = None
 
+        # 关键修复：添加未删除的条件
+        query = query.filter(cls.deleted_at.is_(None))
         for key in criterion:
             val = criterion[key]
             if key == "order_by":
@@ -124,11 +126,11 @@ class MyModel:
                         )
                 else:
                     query = query.filter(getattr(cls, key) == val)
-
-        if cls.deleted_at_value is None:
-            query = query.filter(cls.deleted_at.is_(None))
-        else:
-            query = query.filter(cls.deleted_at == cls.deleted_at_value)
+        print("value", query)
+        # if cls.deleted_at_value is None:
+        #     query = query.filter(cls.deleted_at.is_(None))
+        # else:
+        #     query = query.filter(cls.deleted_at == cls.deleted_at_value)
 
         if order_by_val is not None:
             if isinstance(order_by_val, dict):
@@ -146,7 +148,7 @@ class MyModel:
                         query = query.order_by(getattr(cls, col).desc())
                     else:
                         query = query.order_by(getattr(cls, col).asc())
-
+        print("value", query)
         return query.all()
 
     @classmethod
@@ -169,3 +171,37 @@ class MyModel:
         session.add_all(items)
         if commit:
             session.commit()
+
+
+# base_schema.py
+from pydantic import BaseModel, Field
+from typing import Optional
+
+
+class BaseSchema(BaseModel):
+    """统一的基础 Pydantic 模型，包含通用字段"""
+
+    id: Optional[int] = Field(None, description="主键ID")
+    created_at: Optional[datetime] = Field(None, description="创建时间")
+    updated_at: Optional[datetime] = Field(None, description="更新时间")
+    deleted_at: Optional[datetime] = Field(None, description="删除时间")
+
+    class Config:
+        from_attributes = True
+        arbitrary_types_allowed = True
+
+
+class BaseCreateSchema(BaseModel):
+    """创建时使用的基础模型（不包含自动生成的字段）"""
+
+    class Config:
+        from_attributes = True
+
+
+class BaseUpdateSchema(BaseModel):
+    """更新时使用的基础模型"""
+
+    id: int = Field(..., description="主键ID")
+
+    class Config:
+        from_attributes = True
