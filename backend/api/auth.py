@@ -52,7 +52,7 @@ def _issue_token(db: Session, user: UserModel) -> str:
 async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     existing = UserModel.select_one_by(db, {"username": payload.username})
     if existing:
-        return error("用户名已存在")
+        return error("用户名已存在", code=400)
 
     user_id = UserModel.insert(
         db, {"username": payload.username, "password": hash_password(payload.password)}
@@ -66,7 +66,7 @@ async def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 async def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = UserModel.select_one_by(db, {"username": payload.username})
     if not user or not user.password or not verify_password(payload.password, user.password):
-        return error("用户名或密码错误")
+        return error("用户名或密码错误", code=400)
 
     token = _issue_token(db, user)
     return success({"token": token, "user": UserModel.get_by_id(db, user.id)})

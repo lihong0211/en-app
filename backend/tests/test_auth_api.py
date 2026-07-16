@@ -14,7 +14,7 @@ def test_register_duplicate_username(client):
     client.post("/auth/register", json={"username": "bob", "password": "secret123"})
     resp = client.post("/auth/register", json={"username": "bob", "password": "other"})
     body = resp.json()
-    assert body["code"] != 200
+    assert body["code"] == 400
 
 
 def test_login_success(client):
@@ -29,13 +29,13 @@ def test_login_wrong_password(client):
     client.post("/auth/register", json={"username": "dave", "password": "secret123"})
     resp = client.post("/auth/login", json={"username": "dave", "password": "wrong"})
     body = resp.json()
-    assert body["code"] != 200
+    assert body["code"] == 400
 
 
 def test_login_unknown_username(client):
     resp = client.post("/auth/login", json={"username": "nosuchuser", "password": "x"})
     body = resp.json()
-    assert body["code"] != 200
+    assert body["code"] == 400
 
 
 def test_me_without_token(client):

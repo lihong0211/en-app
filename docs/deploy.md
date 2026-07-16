@@ -62,4 +62,11 @@
 
 ## Electron 客户端
 
-生产打包时前端请求地址由 `src/render/.env.production` 里的 `VUE_APP_API_BASE_URL` 决定，改成 `https://你的域名` 即可，不需要再改代码。
+生产打包前，以下 4 处占位值都要换成真实值，缺一个都会导致登录在生产环境静默失败（`/auth/me` 请求假域名、微信授权 URL 里带的是假 AppID）：
+
+1. `src/main/main.js` 顶部"微信开放平台配置"注释处的 `WECHAT_APP_ID`，换成真实的微信开放平台 AppID（AppID 不是密钥，可以放在客户端）
+2. 同一处的 `WECHAT_REDIRECT_URI`，换成跟微信开放平台后台配置的"授权回调域"匹配的具体回调路径（如 `https://你的域名/auth/wechat/callback`）
+3. 同一处 `API_BASE_URL` 三元表达式里生产分支（`NODE_ENV !== 'development'` 时）的值，换成 `https://你的域名`
+4. `src/render/.env.production` 里的 `VUE_APP_API_BASE_URL`，同样换成 `https://你的域名`
+
+前 3 处在代码里，第 4 处在环境变量文件里，两边都要改，缺一不可。
