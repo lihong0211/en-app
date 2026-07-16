@@ -1,7 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 import uvicorn
-from api import users, words
+from api import users, words, auth
+from core.exception import BusinessException
 from monitor import run_monitor
 
 app = FastAPI(
@@ -22,16 +25,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.exception_handler(BusinessException)
+async def business_exception_handler(request, exc: BusinessException):
+    return JSONResponse(status_code=200, content=jsonable_encoder(exc.json()))
+
+
 def register_api():
     # 手动注册每个路由
     routers = [
         users.router,
         words.router,
+        auth.router,
     ]
 
     for router in routers:
         app.include_router(router)
         print(f"register_router {router.prefix} success")
+
 
 register_api()
 
