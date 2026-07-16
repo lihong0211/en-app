@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_ENV=development electron .",
-    "build": "npm run build:python:mac && npm run build:render && npm run build:mac",
+    "build": "npm run build:render && npm run build:mac",
     "build:python:mac": "cd backend &&  pyinstaller python-backend.spec",
     "build:render": "cd src/render && npm run build",
     "build:mac": "electron-builder --mac --arm64",
@@ -23,16 +23,7 @@
       "resources/**/*",
       "node_modules/**/*"
     ],
-    "extraResources": [
-      {
-        "from": "backend/dist/python-backend",
-        "to": "backend/python-backend"
-      },
-      {
-        "from": "backend/.env",
-        "to": "backend/.env"
-      }
-    ],
+    "extraResources": [],
     "mac": {
       "category": "public.app-category.productivity",
       "target": {
