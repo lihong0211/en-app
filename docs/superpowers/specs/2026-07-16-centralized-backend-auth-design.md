@@ -71,7 +71,10 @@
 
 ## 数据库改动
 
-完整建表语句见 [`backend/sql/schema.sql`](../../../backend/sql/schema.sql)（阿里云数据库目前为空库，此文件包含 `users`、`words`、`word_meanings` 三张表的完整 DDL，可直接 `mysql -h <host> -u <user> -p <db> < schema.sql` 执行）。
+完整建表语句见 [`backend/sql/schema.sql`](../../../backend/sql/schema.sql)（阿里云数据库目前为空库，可直接 `mysql -h <host> -u <user> -p <db> < schema.sql` 一次性执行）。按用户要求一次性建好全部表，包含：
+
+- `users`、`words`、`word_meanings`：本阶段实际会用到
+- `word_libraries`、`word_library_items`：第 2 阶段"个人词库"要用的表，提前建好结构，但本阶段的后端代码不会读写它们
 
 `users` 表关键字段：
 
