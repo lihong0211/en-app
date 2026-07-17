@@ -1,16 +1,16 @@
 <template>
-  <Desk />
+  <Login v-if="view === 'login'" />
+  <Desk v-else-if="view === 'bar'" />
+  <Main v-else />
 </template>
 
-<script>
+<script setup>
 import Desk from './components/Desk.vue'
+import Login from './components/Login.vue'
+import Main from './components/Main.vue'
 
-export default {
-  name: 'App',
-  components: {
-    Desk
-  }
-}
+// login=登录窗口 / bar=悬浮词幕条 / 默认=酷狗式主界面
+const view = new URLSearchParams(window.location.search).get('view') || 'main'
 </script>
 
 <style>
