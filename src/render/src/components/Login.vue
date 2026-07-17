@@ -2,12 +2,6 @@
   <div class="login">
     <h1 class="title">记单词</h1>
 
-    <button class="wechat-btn" :disabled="loading" @click="loginWithWechat">
-      微信扫码登录
-    </button>
-
-    <div class="divider">或使用账号密码</div>
-
     <form class="account-form" @submit.prevent="submitLogin">
       <input v-model="username" class="input" placeholder="用户名" autocomplete="username" />
       <input
@@ -41,24 +35,6 @@ const errorMsg = ref('')
 async function finishLogin(token) {
   await window.electronAPI.setToken(token)
   await window.electronAPI.completeLogin()
-}
-
-async function loginWithWechat() {
-  loading.value = true
-  errorMsg.value = ''
-  try {
-    const code = await window.electronAPI.wechatLogin()
-    const res = await http.post('/auth/wechat/login', { code })
-    if (res.data.code === 200) {
-      await finishLogin(res.data.data.token)
-    } else {
-      errorMsg.value = res.data.msg
-    }
-  } catch (e) {
-    errorMsg.value = e.message || '微信登录失败'
-  } finally {
-    loading.value = false
-  }
 }
 
 async function submitLogin() {
@@ -118,23 +94,6 @@ async function submitRegister() {
   text-align: center;
   font-size: 22px;
   margin-bottom: 24px;
-}
-
-.wechat-btn {
-  background: #07c160;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 12px;
-  font-size: 15px;
-  cursor: pointer;
-}
-
-.divider {
-  text-align: center;
-  color: #9ca3af;
-  font-size: 12px;
-  margin: 20px 0;
 }
 
 .account-form {

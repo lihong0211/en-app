@@ -15,11 +15,12 @@ app.name = '记单词'
 const WECHAT_APP_ID = 'REPLACE_WITH_YOUR_WECHAT_APP_ID'
 const WECHAT_REDIRECT_URI = 'https://REPLACE_WITH_YOUR_DOMAIN/auth/wechat/callback'
 
-// 后端统一走 service-ali 的 en-desktop 模块（开发环境本地起 service-ali，端口 3000）
+// 后端统一走 service-ali 的 en-desktop 模块（开发环境本地起 service-ali，端口 3000；
+// 生产环境走 nginx 反代的 HTTPS 域名，CORS 也由 nginx 统一处理）
 const API_BASE_URL =
   process.env.NODE_ENV === 'development'
     ? 'http://127.0.0.1:3000/en-desktop'
-    : 'https://REPLACE_WITH_YOUR_DOMAIN/en-desktop'
+    : 'https://api.doctor-dog.com/en-desktop'
 
 let mainWindow = null
 let barWindow = null
