@@ -96,11 +96,3 @@ out/
 
 # vue-cli-service build output (generated from src/render)
 /src/renderer/
-
-# Python
-backend/.venv/
-backend/__pycache__/
-backend/**/__pycache__/
-backend/build/
-backend/dist/
-*.pyc
