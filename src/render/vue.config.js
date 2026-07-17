@@ -13,12 +13,13 @@ module.exports = defineConfig({
   },
   devServer: {
     port: 8081,
+    // dev 同源代理到本地 service-ali，绕开 CORS（生产由 nginx 配 CORS）
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:3000',
         changeOrigin: true,
         pathRewrite: {
-          '^/api': ''
+          '^/api': '/en-desktop'
         }
       }
     }

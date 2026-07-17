@@ -1,13 +1,16 @@
 <template>
-  <Login v-if="isLoginView" />
-  <Desk v-else />
+  <Login v-if="view === 'login'" />
+  <Desk v-else-if="view === 'bar'" />
+  <Main v-else />
 </template>
 
 <script setup>
 import Desk from './components/Desk.vue'
 import Login from './components/Login.vue'
+import Main from './components/Main.vue'
 
-const isLoginView = new URLSearchParams(window.location.search).get('view') === 'login'
+// login=登录窗口 / bar=悬浮词幕条 / 默认=酷狗式主界面
+const view = new URLSearchParams(window.location.search).get('view') || 'main'
 </script>
 
 <style>

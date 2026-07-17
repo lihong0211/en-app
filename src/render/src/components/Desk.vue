@@ -11,83 +11,45 @@
     </div>
 
     <transition name="fade" mode="out-in">
-      <div v-if="currentWord" class="word-block" :key="currentWord.id || currentIndex">
+      <div v-if="currentWord" class="word-block" :key="currentWord.id || currentWord.word">
         <div class="word-text">{{ currentWord.word }}</div>
-        <div v-for="(m, i) in currentWord.meaning.slice(0, 2)" :key="i" class="word-meaning">
+        <div v-for="(m, i) in (currentWord.meaning || []).slice(0, 2)" :key="i" class="word-meaning">
           <span>{{ m.type }}</span>{{ m.content }}
         </div>
+      </div>
+      <div v-else class="word-block">
+        <div class="word-meaning">在主界面选择词库开始播放</div>
       </div>
     </transition>
   </div>
 </template>
 
 <script setup>
-import http from '../api/http'
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { playWordAudio } from '../utils/audio'
 
-const words = ref([])
-const currentIndex = ref(0)
-const isLoading = ref(false)
-const isHovering = ref(false)
-let autoplayTimer = null
+// 悬浮词幕条是主进程播放状态的纯展示层：不自己拉数据、不自己跑定时器
+const playback = ref(null)
+let unsubscribe = null
+let unsubscribeAudio = null
 let hoverLeaveTimer = null
+const isHovering = ref(false)
 
-const startAutoplay = () => {
-  clearInterval(autoplayTimer)
-  autoplayTimer = setInterval(next, 7000)
-}
-
-const stopAutoplay = () => {
-  clearInterval(autoplayTimer)
-}
+const currentWord = computed(() => playback.value?.currentWord || null)
 
 const onMouseEnter = () => {
   clearTimeout(hoverLeaveTimer)
   isHovering.value = true
-  stopAutoplay()
+  window.electronAPI?.setPlaying(false)
 }
 
 const onMouseLeave = () => {
   // 短暂延迟再隐藏，鼠标移向按钮途中稍微划出窗口边界不会立刻收起控制条
   hoverLeaveTimer = setTimeout(() => {
     isHovering.value = false
-    next() // 恢复轮播时立刻切一次，不用再等一整个间隔周期
-    startAutoplay()
+    window.electronAPI?.playbackNext() // 恢复轮播时立刻切一次，不用再等一整个间隔周期
+    window.electronAPI?.setPlaying(true)
   }, 300)
-}
-
-const currentWord = computed(() => words.value[currentIndex.value] || null)
-
-// 一次性把所有单词拉回来，后面直接在全量里随机，不用分页
-const getAllWords = async (retryCount = 0) => {
-  if (isLoading.value) return
-
-  isLoading.value = true
-  try {
-    const response = await http.get('/words/list', {
-      params: { page: 1, page_size: 10000 }
-    })
-    words.value = response.data.data || []
-  } catch (error) {
-    console.error('获取单词失败:', error)
-    // 生产环境下 python 后端启动比页面挂载慢，第一次请求大概率会失败，隔几秒重试
-    const maxRetries = 15
-    if (retryCount < maxRetries) {
-      setTimeout(() => getAllWords(retryCount + 1), 2000)
-    }
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const next = () => {
-  if (words.value.length <= 1) return
-
-  let randomIndex
-  do {
-    randomIndex = Math.floor(Math.random() * words.value.length)
-  } while (randomIndex === currentIndex.value)
-  currentIndex.value = randomIndex
 }
 
 const minimize = () => window.electronAPI?.minimizeWindow()
@@ -119,16 +81,18 @@ const startDrag = (e) => {
 }
 
 onMounted(async () => {
-  await getAllWords()
-  if (words.value.length > 0) {
-    currentIndex.value = Math.floor(Math.random() * words.value.length)
-  }
-  startAutoplay()
+  playback.value = await window.electronAPI?.getPlaybackState()
+  unsubscribe = window.electronAPI?.onPlaybackState((state) => {
+    playback.value = state
+  })
+  // 主界面关闭时，主进程会把发音事件定向发给词幕条
+  unsubscribeAudio = window.electronAPI?.onPlayAudio(playWordAudio)
 })
 
 onBeforeUnmount(() => {
-  clearInterval(autoplayTimer)
   clearTimeout(hoverLeaveTimer)
+  if (unsubscribe) unsubscribe()
+  if (unsubscribeAudio) unsubscribeAudio()
   stopDrag()
 })
 </script>
@@ -267,7 +231,6 @@ onBeforeUnmount(() => {
 }
 
 .word-type {
-  /* color: #cbd5ff; */
   margin-right: 4px;
   font-weight: 600;
 }
