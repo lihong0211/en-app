@@ -536,16 +536,28 @@ function startCreate() {
   creatingLibrary.value = true
 }
 
+// keyup.enter 提交时 creatingLibrary=false 会把输入框从 DOM 里移除，
+// 浏览器对被移除的聚焦元素会补发一个 blur 事件，@blur 又调一次这个函数，
+// 在第一次请求返回前 newLibraryName 还没清空，会并发发出两个建库请求。
+// 用这个锁挡掉 keyup.enter 触发后紧跟着的那次 blur 调用。
+let creatingSubmitting = false
+
 async function confirmCreate() {
+  if (creatingSubmitting) return
   const name = newLibraryName.value.trim()
   creatingLibrary.value = false
   if (!name) return
-  const res = await http.post('/libraries/add', { name })
-  if (res.data.code === 200) {
-    newLibraryName.value = ''
-    await fetchLibraries()
-  } else {
-    showToast(res.data.msg)
+  creatingSubmitting = true
+  try {
+    const res = await http.post('/libraries/add', { name })
+    if (res.data.code === 200) {
+      newLibraryName.value = ''
+      await fetchLibraries()
+    } else {
+      showToast(res.data.msg)
+    }
+  } finally {
+    creatingSubmitting = false
   }
 }
 
@@ -554,15 +566,24 @@ function startRename(lib) {
   renameText.value = lib.name
 }
 
+// 同 confirmCreate：keyup.enter 触发的 DOM 移除会级联出一次 blur，用锁挡掉重复调用
+let renameSubmitting = false
+
 async function confirmRename(lib) {
+  if (renameSubmitting) return
   const name = renameText.value.trim()
   renamingId.value = null
   if (!name || name === lib.name) return
-  const res = await http.post(`/libraries/update?library_id=${lib.id}`, { name })
-  if (res.data.code === 200) {
-    await fetchLibraries()
-  } else {
-    showToast(res.data.msg)
+  renameSubmitting = true
+  try {
+    const res = await http.post(`/libraries/update?library_id=${lib.id}`, { name })
+    if (res.data.code === 200) {
+      await fetchLibraries()
+    } else {
+      showToast(res.data.msg)
+    }
+  } finally {
+    renameSubmitting = false
   }
 }
 
