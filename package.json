@@ -8,7 +8,9 @@
     "dev": "NODE_ENV=development electron .",
     "build": "npm run build:render && npm run build:mac",
     "build:render": "cd src/render && npm run build",
-    "build:mac": "electron-builder --mac --arm64",
+    "build:mac": "electron-builder --mac --arm64 --x64",
+    "build:mac:arm64": "electron-builder --mac --arm64",
+    "build:mac:x64": "electron-builder --mac --x64",
     "pack:mac": "electron-builder --mac --dir"
   },
   "build": {
@@ -28,7 +30,8 @@
       "target": {
         "target": "default",
         "arch": [
-          "arm64"
+          "arm64",
+          "x64"
         ]
       },
       "icon": "resources/icon.icns",
