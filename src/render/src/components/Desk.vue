@@ -1,24 +1,61 @@
 <template>
-  <div class="app" :class="{ hover: isHovering }" @mouseenter="onMouseEnter" @mouseleave="onMouseLeave"
-    @mousedown="startDrag">
-    <div class="overlay"></div>
+  <div
+    class="app"
+    :class="{ hover: isHovering }"
+    @mouseenter="onMouseEnter"
+    @mouseleave="onMouseLeave"
+    @mousedown="startDrag"
+  >
+    <div class="overlay" />
 
     <div class="controls">
-      <button class="ctrl-btn" title="最小化" @click="minimize"><span
-          class="ctrl-btn-icon ctrl-btn-icon--minimize"></span></button>
-      <button class="ctrl-btn" title="关闭" @click="closeWindow"><span
-          class="ctrl-btn-icon ctrl-btn-icon--close"></span></button>
+      <button
+        class="ctrl-btn"
+        title="最小化"
+        @click="minimize"
+      >
+        <span
+          class="ctrl-btn-icon ctrl-btn-icon--minimize"
+        />
+      </button>
+      <button
+        class="ctrl-btn"
+        title="关闭"
+        @click="closeWindow"
+      >
+        <span
+          class="ctrl-btn-icon ctrl-btn-icon--close"
+        />
+      </button>
     </div>
 
-    <transition name="fade" mode="out-in">
-      <div v-if="currentWord" class="word-block" :key="currentWord.id || currentWord.word">
-        <div class="word-text">{{ currentWord.word }}</div>
-        <div v-for="(m, i) in (currentWord.meaning || []).slice(0, 2)" :key="i" class="word-meaning">
+    <transition
+      name="fade"
+      mode="out-in"
+    >
+      <div
+        v-if="currentWord"
+        :key="currentWord.id || currentWord.word"
+        class="word-block"
+      >
+        <div class="word-text">
+          {{ currentWord.word }}
+        </div>
+        <div
+          v-for="(m, i) in (currentWord.meaning || []).slice(0, 2)"
+          :key="i"
+          class="word-meaning"
+        >
           <span>{{ m.type }}</span>{{ m.content }}
         </div>
       </div>
-      <div v-else class="word-block">
-        <div class="word-meaning">在主界面选择词库开始播放</div>
+      <div
+        v-else
+        class="word-block"
+      >
+        <div class="word-meaning">
+          在主界面选择词库开始播放
+        </div>
       </div>
     </transition>
   </div>
@@ -26,7 +63,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { playWordAudio } from '../utils/audio'
+import { playWordAudio, playSentenceAudio, firstSentenceAudioUrl } from '../utils/audio'
 
 // 悬浮词幕条是主进程播放状态的纯展示层：不自己拉数据、不自己跑定时器
 const playback = ref(null)
@@ -86,7 +123,12 @@ onMounted(async () => {
     playback.value = state
   })
   // 主界面关闭时，主进程会把发音事件定向发给词幕条
-  unsubscribeAudio = window.electronAPI?.onPlayAudio(playWordAudio)
+  unsubscribeAudio = window.electronAPI?.onPlayAudio((word) => {
+    playWordAudio(word, () => {
+      const url = firstSentenceAudioUrl(currentWord.value)
+      if (url) playSentenceAudio(url)
+    })
+  })
 })
 
 onBeforeUnmount(() => {
