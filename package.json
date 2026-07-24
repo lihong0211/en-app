@@ -1,7 +1,7 @@
 {
-  "name": "your-app",
+  "name": "learn-english",
   "version": "2.1.0",
-  "description": "记单词",
+  "description": "learn-english",
   "main": "src/main/main.js",
   "type": "module",
   "scripts": {
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.yourcompany.yourapp",
-    "productName": "记单词",
+    "productName": "learn-english",
     "directories": {
       "output": "dist"
     },

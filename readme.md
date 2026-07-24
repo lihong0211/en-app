@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="resources/icon.png" width="140" height="140" alt="记单词" />
+  <img src="resources/icon.png" width="140" height="140" alt="learn-english" />
 </div>
 
-<h1 align="center">记单词</h1>
+<h1 align="center">learn-english</h1>
 
 <p align="center">
   像放歌一样背单词的 macOS 桌面应用。
@@ -55,10 +55,10 @@
 安装包尚未经过苹果公证，首次打开时系统可能提示"Apple 无法验证""此软件需要更新"，属于正常现象，按下面任一方法处理即可：
 
 - **右键打开**：不要双击，改为右键（或按住 Control）点击 App 图标 → 选择「打开」→ 弹窗中再次选择「打开」，之后即可正常双击使用。**注意**：第一次右键「打开」有时弹窗里不会出现「打开」按钮（只有「完成」/「移到废纸篓」），此时再右键点击一次「打开」，第二次弹窗通常就会带上「打开」按钮了
-- **系统设置放行**：若直接被拦截，进入「系统设置」→「隐私与安全性」，下滑找到"记单词"被阻止打开的提示，点击「仍要打开」
+- **系统设置放行**：若直接被拦截，进入「系统设置」→「隐私与安全性」，下滑找到"learn-english"被阻止打开的提示，点击「仍要打开」
 - **终端命令**（适合熟悉终端的用户）：
   ```bash
-  xattr -cr /Applications/记单词.app
+  xattr -cr /Applications/learn-english.app
   ```
 
 ## 技术栈

@@ -7,7 +7,7 @@ import { app, BrowserWindow, clipboard, screen, globalShortcut, ipcMain } from '
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 // 开发环境应用名默认是 "Electron"，统一显示为产品名
-app.name = '记单词'
+app.name = 'learn-english'
 
 // 临时排查词幕例句问题：开发环境开一个远程调试端口，方便直接连上去看 console
 if (process.env.NODE_ENV === 'development') {
@@ -32,7 +32,15 @@ let barWindow = null
 let vueDevServer = null
 let popupWindow = null
 let isCapturing = false
-let loginWindow = null
+
+// 划词弹窗的生词本图标复用主界面单词列表同款红心图片，保持视觉一致（内嵌成 base64，
+// 弹窗是 data: 页面，没有相对路径可用）
+function loadIconDataUri(relativePath) {
+  const buf = readFileSync(join(__dirname, relativePath))
+  return `data:image/png;base64,${buf.toString('base64')}`
+}
+const LIKE_ON_ICON_URI = loadIconDataUri('../render/src/assets/like-on.png')
+const LIKE_OFF_ICON_URI = loadIconDataUri('../render/src/assets/like-off.png')
 
 function getAuthFilePath() {
   return join(app.getPath('userData'), 'auth.json')
@@ -101,45 +109,6 @@ function setStoredSubtitleColor(color) {
   writeSettings({ subtitleColor: color })
 }
 
-async function checkStoredAuth() {
-  const token = getStoredToken()
-  if (!token) return false
-
-  try {
-    const res = await fetch(`${API_BASE_URL}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const data = await res.json()
-    return data.code === 200
-  } catch {
-    return false
-  }
-}
-
-function createLoginWindow() {
-  loginWindow = new BrowserWindow({
-    width: 420,
-    height: 600,
-    title: '记单词',
-    webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
-      preload: join(__dirname, '../preload/preload.cjs')
-    }
-  })
-
-  loginWindow.on('closed', () => {
-    loginWindow = null
-  })
-
-  const isDev = process.env.NODE_ENV === 'development'
-  if (isDev) {
-    loadDevServerWithRetry(loginWindow, 'http://localhost:8081?view=login')
-  } else {
-    loginWindow.loadFile(join(__dirname, '../renderer/index.html'), { query: { view: 'login' } })
-  }
-}
-
 // 微信扫码登录：弹一个子窗口加载微信官方授权页，用户扫码后微信会把这个
 // 窗口导航到 WECHAT_REDIRECT_URI，主进程拦截这个导航拿到 code，不等页面
 // 真正加载完就关窗口（用户体验上是扫完码窗口应声消失）
@@ -198,7 +167,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 680,
-    title: '记单词',
+    title: 'learn-english',
     minWidth: 860,
     minHeight: 560,
     titleBarStyle: 'hiddenInset',
@@ -234,7 +203,7 @@ function createBarWindow() {
   barWindow = new BrowserWindow({
     width: 400,
     height: 140, // 留够单词+释义+一行例句的高度，不完全依赖 resize（悬浮在全屏应用上方时 resize 不一定可靠）
-    title: '记单词',
+    title: 'learn-english',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -633,7 +602,16 @@ function ensurePopupWindow() {
 }
 
 // 渲染悬浮卡片内容：loading / 查词结果 / 报错，三种状态复用同一个窗口
-function renderPopup({ loading, word, en_pronunciation, us_pronunciation, meaning, saved, errorMsg }) {
+function renderPopup({
+  loading,
+  word,
+  en_pronunciation,
+  us_pronunciation,
+  meaning,
+  saved,
+  saved_vocab: savedVocab,
+  errorMsg
+}) {
   const win = ensurePopupWindow()
 
   let bodyHtml
@@ -647,7 +625,12 @@ function renderPopup({ loading, word, en_pronunciation, us_pronunciation, meanin
     bodyHtml = `
       <div class="header">
         <div class="word">${escapeHtml(word)}</div>
-        <button id="favBtn" class="fav-btn${saved ? ' saved' : ''}">${saved ? '★' : '☆'}</button>
+        <div class="fav-group">
+          <button id="favBtn" class="fav-btn${saved ? ' saved' : ''}" title="默认收藏">${saved ? '★' : '☆'}</button>
+          <button id="vocabBtn" class="fav-btn vocab-btn" title="生词本">
+            <img src="${savedVocab ? LIKE_ON_ICON_URI : LIKE_OFF_ICON_URI}" alt="">
+          </button>
+        </div>
       </div>
       <div class="phonetic">英 ${escapeHtml(en_pronunciation)}　美 ${escapeHtml(us_pronunciation)}</div>
       <ul class="meanings">
@@ -656,23 +639,47 @@ function renderPopup({ loading, word, en_pronunciation, us_pronunciation, meanin
       <script>
         (function () {
           const wordData = ${wordDataJson}
-          const btn = document.getElementById('favBtn')
-          btn.addEventListener('click', async () => {
-            if (btn.classList.contains('saved')) return
-            btn.disabled = true
-            try {
-              const data = await window.electronAPI.collectWord(wordData)
-              if (data && (data.code === 200 || data.msg === '单词已存在')) {
-                btn.textContent = '★'
-                btn.classList.add('saved')
-              } else {
-                btn.title = (data && data.msg) || '收藏失败'
+          const LIKE_ON = ${JSON.stringify(LIKE_ON_ICON_URI)}
+          const LIKE_OFF = ${JSON.stringify(LIKE_OFF_ICON_URI)}
+
+          // 两个按钮都是真正的开关：再点一次能取消收藏，不是加入后就锁死
+          function wireToggle(btn, { baseTitle, collect, uncollect, render }) {
+            let saved = btn.classList.contains('saved')
+            btn.addEventListener('click', async () => {
+              btn.disabled = true
+              try {
+                const data = saved ? await uncollect(wordData) : await collect(wordData)
+                if (data && (data.code === 200 || data.msg === '单词已存在')) {
+                  saved = !saved
+                  btn.classList.toggle('saved', saved)
+                  btn.title = baseTitle
+                  render(saved)
+                } else {
+                  btn.title = (data && data.msg) || '操作失败'
+                }
+              } catch (e) {
+                // 静默失败，按钮恢复可点击
+              } finally {
+                btn.disabled = false
               }
-            } catch (e) {
-              // 静默失败，按钮恢复可点击
-            } finally {
-              btn.disabled = false
-            }
+            })
+          }
+
+          const favBtn = document.getElementById('favBtn')
+          wireToggle(favBtn, {
+            baseTitle: '默认收藏',
+            collect: window.electronAPI.collectWord,
+            uncollect: window.electronAPI.uncollectWord,
+            render: (saved) => { favBtn.textContent = saved ? '★' : '☆' }
+          })
+
+          const vocabBtn = document.getElementById('vocabBtn')
+          const vocabImg = vocabBtn.querySelector('img')
+          wireToggle(vocabBtn, {
+            baseTitle: '生词本',
+            collect: window.electronAPI.collectToVocabBook,
+            uncollect: window.electronAPI.uncollectFromVocabBook,
+            render: (saved) => { vocabImg.src = saved ? LIKE_ON : LIKE_OFF }
           })
         })()
       </script>
@@ -698,11 +705,16 @@ function renderPopup({ loading, word, en_pronunciation, us_pronunciation, meanin
         }
         .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
         .word { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+        .fav-group { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
         .fav-btn {
           border: none; background: none; cursor: pointer; font-size: 20px;
-          color: #c9ccd1; padding: 0; line-height: 1; margin-top: 2px;
+          color: #c9ccd1; padding: 0; line-height: 1;
+          display: flex; align-items: center;
         }
-        .fav-btn.saved { color: #f5a623; cursor: default; }
+        .fav-btn.saved { color: #f5a623; }
+        /* 生词本红心跟主界面单词列表同款：未收藏时反色成灰，已收藏时原样显示红色 */
+        .vocab-btn img { width: 20px; height: 20px; display: block; filter: invert(58%); }
+        .vocab-btn.saved img { filter: none; }
         .phonetic { font-size: 13px; color: #6b7280; margin-bottom: 10px; }
         .meanings { list-style: none; margin: 0; padding: 0; font-size: 14px; line-height: 1.7; max-height: 140px; overflow-y: auto; }
         .type { color: #2563eb; margin-right: 6px; font-weight: 600; }
@@ -791,9 +803,13 @@ async function captureSelectionAndLookup() {
     // 立即弹出卡片显示 loading 状态，不等接口返回
     renderPopup({ loading: true, word: selected })
 
+    const lookupToken = getStoredToken()
     const res = await fetch(`${API_BASE_URL}/words/lookup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(lookupToken ? { Authorization: `Bearer ${lookupToken}` } : {})
+      },
       body: JSON.stringify({ word: selected })
     })
     const data = await res.json()
@@ -910,8 +926,8 @@ ipcMain.on('playback:audio-ended', () => {
 ipcMain.handle('playback:get-state', () => playbackState())
 
 // 划词弹窗收藏：主进程代发（弹窗是 data: 页面，直连后端会被 CORS 拦），
-// 带登录 token，收藏进默认词库"默认收藏"
-ipcMain.handle('words:collect', async (event, wordData) => {
+// 带登录 token，收藏进指定词库（'default'=默认收藏 / 'review'=生词本）
+async function collectWordTo(wordData, libraryId) {
   try {
     const token = getStoredToken()
     const res = await fetch(`${API_BASE_URL}/words/add`, {
@@ -920,7 +936,7 @@ ipcMain.handle('words:collect', async (event, wordData) => {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       },
-      body: JSON.stringify({ ...wordData, library_id: 'default' })
+      body: JSON.stringify({ ...wordData, library_id: libraryId })
     })
     const data = await res.json()
     // 收藏成功通知各窗口刷新（主界面单词列表/词库计数多了一个词）
@@ -934,7 +950,36 @@ ipcMain.handle('words:collect', async (event, wordData) => {
     console.error('收藏单词失败:', err)
     return { code: 500, msg: err.message || '收藏失败' }
   }
-})
+}
+ipcMain.handle('words:collect', (event, wordData) => collectWordTo(wordData, 'default'))
+ipcMain.handle('words:collect-vocab', (event, wordData) => collectWordTo(wordData, 'review'))
+
+// 划词弹窗取消收藏：和上面对称，让两个按钮都能真正切换（不是加入后就锁死）
+async function uncollectWordFrom(wordData, libraryId) {
+  try {
+    const token = getStoredToken()
+    const res = await fetch(`${API_BASE_URL}/words/remove-from-library`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({ word: wordData?.word, library_id: libraryId })
+    })
+    const data = await res.json()
+    if (data && data.code === 200) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send('words:collected', data.data || null)
+      }
+    }
+    return data
+  } catch (err) {
+    console.error('取消收藏失败:', err)
+    return { code: 500, msg: err.message || '取消收藏失败' }
+  }
+}
+ipcMain.handle('words:uncollect', (event, wordData) => uncollectWordFrom(wordData, 'default'))
+ipcMain.handle('words:uncollect-vocab', (event, wordData) => uncollectWordFrom(wordData, 'review'))
 
 // 悬浮词幕条开关
 ipcMain.handle('bar:toggle', () => {
@@ -969,23 +1014,14 @@ ipcMain.handle('auth:clear-token', () => {
   return true
 })
 ipcMain.handle('auth:wechat-login', () => loginWithWechat())
-ipcMain.handle('auth:login-success', () => {
-  if (loginWindow && !loginWindow.isDestroyed()) {
-    loginWindow.close()
-  }
-  createMainWindow()
-})
+// 登录内嵌在主界面了，不用再关/开窗口，退登只需要停轮播 + 广播给所有窗口自己切回登录态
 ipcMain.handle('auth:session-expired', () => {
   clearInterval(playback.timer)
   playback.timer = null
   playback.playing = false
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.close()
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('auth:logged-out')
   }
-  if (barWindow && !barWindow.isDestroyed()) {
-    barWindow.close()
-  }
-  createLoginWindow()
 })
 
 app.whenReady().then(async () => {
@@ -1017,14 +1053,9 @@ app.whenReady().then(async () => {
     }
   }
 
-  const authed = await checkStoredAuth()
-  if (authed) {
-    openInitialWindow()
-  } else if (isDev) {
-    setTimeout(() => createLoginWindow(), 3000)
-  } else {
-    createLoginWindow()
-  }
+  // 登录改成内嵌在主界面里（侧边栏头像/登录按钮 + 下拉面板），不再需要单独的登录窗口，
+  // 不管有没有登录过都直接开主窗口，Main.vue 自己根据 /auth/me 的结果决定显示登录态还是账号态
+  openInitialWindow()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

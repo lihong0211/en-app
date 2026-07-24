@@ -13,8 +13,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setToken: (token) => ipcRenderer.invoke('auth:set-token', token),
   clearToken: () => ipcRenderer.invoke('auth:clear-token'),
   wechatLogin: () => ipcRenderer.invoke('auth:wechat-login'),
-  completeLogin: () => ipcRenderer.invoke('auth:login-success'),
   sessionExpired: () => ipcRenderer.invoke('auth:session-expired'),
+  onLoggedOut: (callback) => {
+    const listener = () => callback()
+    ipcRenderer.on('auth:logged-out', listener)
+    return () => ipcRenderer.removeListener('auth:logged-out', listener)
+  },
 
   // 播放控制（状态在主进程，主界面/悬浮条共用）
   startPlayback: (payload) => ipcRenderer.invoke('playback:start', payload),
@@ -42,7 +46,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resizeBar: (height) => ipcRenderer.send('bar:resize', height),
 
   // 划词弹窗收藏：由主进程发请求（data: 页面直连后端会被 CORS 拦）
+  // 两个独立的收藏目标：默认收藏 / 生词本，都支持收藏和取消收藏
   collectWord: (wordData) => ipcRenderer.invoke('words:collect', wordData),
+  collectToVocabBook: (wordData) => ipcRenderer.invoke('words:collect-vocab', wordData),
+  uncollectWord: (wordData) => ipcRenderer.invoke('words:uncollect', wordData),
+  uncollectFromVocabBook: (wordData) => ipcRenderer.invoke('words:uncollect-vocab', wordData),
   onWordCollected: (callback) => {
     const listener = (event, word) => callback(word)
     ipcRenderer.on('words:collected', listener)

@@ -10,17 +10,32 @@
     <div class="overlay" />
 
     <div class="controls">
-      <label
-        class="ctrl-btn color-swatch"
-        title="字幕文字颜色"
-        :style="{ color: playback?.subtitleColor || '#46b9ea' }"
-      >
-        <input
-          type="color"
-          :value="playback?.subtitleColor || '#46b9ea'"
-          @input="onColorInput"
-        >
-      </label>
+      <div ref="colorControlRef" class="color-control">
+        <button
+          class="ctrl-btn color-swatch"
+          title="字幕文字颜色"
+          :style="{ color: playback?.subtitleColor || '#46b9ea' }"
+          @click="showColorPanel = !showColorPanel"
+        />
+        <div v-if="showColorPanel" class="color-popover">
+          <button
+            v-for="c in PRESET_COLORS"
+            :key="c"
+            class="color-dot"
+            :class="{ active: c === (playback?.subtitleColor || '#46b9ea') }"
+            :style="{ color: c }"
+            :title="c"
+            @click="selectColor(c)"
+          />
+          <label class="color-dot color-dot-custom" title="自定义颜色">
+            <input
+              type="color"
+              :value="playback?.subtitleColor || '#46b9ea'"
+              @input="onColorInput"
+            >
+          </label>
+        </div>
+      </div>
       <button
         class="ctrl-btn"
         title="最小化"
@@ -110,6 +125,22 @@ let unsubscribeAudio = null
 let hoverLeaveTimer = null
 const isHovering = ref(false)
 
+// 字幕颜色：几个经典桌面歌词配色 + 最后一格自定义（原生颜色选择器）
+const PRESET_COLORS = ['#46b9ea', '#ffd54f', '#7cfc8d', '#ff7ac6', '#ff9f43', '#ffffff', '#ff3b8d', '#b388ff']
+const showColorPanel = ref(false)
+const colorControlRef = ref(null)
+
+function selectColor(color) {
+  window.electronAPI?.setSubtitleColor(color)
+  showColorPanel.value = false
+}
+
+function onDocumentClick(e) {
+  if (showColorPanel.value && !colorControlRef.value?.contains(e.target)) {
+    showColorPanel.value = false
+  }
+}
+
 const currentWord = computed(() => playback.value?.currentWord || null)
 const isExpression = computed(() => playback.value?.kind === 'expression')
 
@@ -161,7 +192,7 @@ const stopDrag = () => {
 }
 
 const startDrag = (e) => {
-  if (e.target.closest('.ctrl-btn')) return
+  if (e.target.closest('.ctrl-btn') || e.target.closest('.color-popover')) return
   e.preventDefault()
   dragStart = { x: e.screenX, y: e.screenY }
   window.addEventListener('mousemove', onDrag)
@@ -169,6 +200,7 @@ const startDrag = (e) => {
 }
 
 onMounted(async () => {
+  document.addEventListener('click', onDocumentClick)
   resizeObserver = new ResizeObserver((entries) => {
     const h = entries[0]?.contentRect?.height
     if (h) window.electronAPI?.resizeBar(Math.ceil(h) + 24)
@@ -214,6 +246,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
   clearTimeout(hoverLeaveTimer)
   if (unsubscribe) unsubscribe()
   if (unsubscribeAudio) unsubscribeAudio()
@@ -308,7 +341,48 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.5);
 }
 
-.color-swatch input[type='color'] {
+.color-control {
+  position: relative;
+}
+
+.color-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  background: rgba(20, 22, 30, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  -webkit-app-region: no-drag;
+  z-index: 3;
+}
+
+.color-dot {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.color-dot.active {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+
+.color-dot-custom {
+  overflow: hidden;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+
+.color-dot-custom input[type='color'] {
   position: absolute;
   inset: 0;
   width: 100%;

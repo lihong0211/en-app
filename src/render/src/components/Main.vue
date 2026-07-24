@@ -3,14 +3,84 @@
     <!-- 左侧：词库（歌单）栏 -->
     <aside class="sidebar">
       <div class="drag-strip" />
-      <div v-if="user" class="user">
-        <div class="avatar">
-          <img v-if="user.avatar" :src="user.avatar" alt="">
-          <span v-else>{{ (user.nickname || user.username || '?').slice(0, 1).toUpperCase() }}</span>
-        </div>
-        <div class="user-name">
-          {{ user.nickname || user.username }}
-        </div>
+      <div class="user-control" ref="userControlRef">
+        <template v-if="user">
+          <div class="user" @click="showAccountMenu = !showAccountMenu">
+            <div class="avatar">
+              <img v-if="user.avatar" :src="user.avatar" alt="">
+              <span v-else>{{ (user.nickname || user.username || '?').slice(0, 1).toUpperCase() }}</span>
+            </div>
+            <div class="user-name">
+              {{ user.nickname || user.username }}
+            </div>
+          </div>
+          <div v-if="showAccountMenu" class="account-menu">
+            <div class="account-menu-avatar">
+              <img v-if="user.avatar" :src="user.avatar" alt="">
+              <span v-else>{{ (user.nickname || user.username || '?').slice(0, 1).toUpperCase() }}</span>
+            </div>
+            <div class="account-menu-name">
+              {{ user.nickname || user.username }}
+            </div>
+            <button class="account-menu-logout" @click="logout">
+              退出账号
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div class="user user-guest" @click="showLoginPanel = !showLoginPanel">
+            <div class="avatar avatar-placeholder">
+              <img :src="guestAvatarIcon" alt="">
+            </div>
+            <div class="user-name">
+              登录
+            </div>
+          </div>
+          <div
+            v-if="showLoginPanel"
+            class="login-panel"
+          >
+            <input
+              v-model="loginUsername"
+              class="login-input"
+              placeholder="用户名"
+              autocomplete="username"
+              @keyup.enter="submitLogin"
+            >
+            <input
+              v-model="loginPassword"
+              class="login-input"
+              type="password"
+              placeholder="密码"
+              autocomplete="current-password"
+              @keyup.enter="submitLogin"
+            >
+            <div class="login-actions">
+              <button
+                class="login-btn"
+                type="button"
+                :disabled="loginLoading"
+                @click="submitLogin"
+              >
+                登录
+              </button>
+              <button
+                class="login-btn secondary"
+                type="button"
+                :disabled="loginLoading"
+                @click="submitRegister"
+              >
+                注册
+              </button>
+            </div>
+            <p
+              v-if="loginError"
+              class="login-error"
+            >
+              {{ loginError }}
+            </p>
+          </div>
+        </template>
       </div>
 
       <div class="nav-section">
@@ -100,6 +170,7 @@
               <div v-for="lib in group.libs" :key="lib.id" class="lib-card" @click="selectLibrary(lib.id)">
                 <div class="card-cover" :style="cardGradient(lib.name)">
                   <span class="card-initial">{{ lib.name.slice(0, 2) }}</span>
+                  <span v-if="lib.favorited" class="card-fav-badge" title="已收藏">★</span>
                   <div class="card-hover">
                     <button class="card-btn" title="播放" @click.stop="playLibrary(lib)">
                       ▶
@@ -146,8 +217,8 @@
                 <th class="col-idx">
                   #
                 </th>
-                <th>短语</th>
-                <th>释义</th>
+                <th class="col-phrase">短语</th>
+                <th class="col-phrase-meaning">释义</th>
               </tr>
             </thead>
             <tbody>
@@ -162,10 +233,10 @@
                     ▶
                   </button>
                 </td>
-                <td class="col-word">
+                <td class="col-phrase">
                   {{ ex.phrase }}
                 </td>
-                <td class="col-meaning">
+                <td class="col-phrase-meaning">
                   {{ ex.meaning }}
                 </td>
               </tr>
@@ -251,9 +322,14 @@
                   </span>
                 </td>
                 <td class="col-ops">
-                  <!-- 未掌握标记：类似"我喜欢"，加入后随时在「未掌握」词库复习 -->
+                  <!-- 默认收藏状态：空心/实心五角星 -->
+                  <button class="op-btn star-btn" :class="{ on: w.favorited }"
+                    :title="w.favorited ? '移出默认收藏' : '加入默认收藏'" @click.stop="toggleWordFavorite(w)">
+                    {{ w.favorited ? '★' : '☆' }}
+                  </button>
+                  <!-- 生词本标记：类似"我喜欢"，加入后随时在「生词本」复习 -->
                   <button class="op-btn heart-btn" :class="{ on: reviewWordIds.has(w.id) }"
-                    :title="reviewWordIds.has(w.id) ? '已掌握，移出复习' : '标记未掌握'" @click.stop="toggleReview(w)">
+                    :title="reviewWordIds.has(w.id) ? '移出生词本' : '加入生词本'" @click.stop="toggleReview(w)">
                     <img class="like-icon" :src="reviewWordIds.has(w.id) ? likeOnIcon : likeOffIcon" alt="">
                   </button>
                   <!-- 自己的词库里是"移出"；全部单词和公共推荐词库里是"加入我的词库" -->
@@ -328,7 +404,7 @@
       <div class="bar-right">
         <button v-if="pb.currentWord && pb.kind !== 'expression'" class="t-btn heart-btn"
           :class="{ on: reviewWordIds.has(pb.currentWord.id) }"
-          :title="reviewWordIds.has(pb.currentWord.id) ? '已掌握' : '标记未掌握'" @click="toggleReview(pb.currentWord)">
+          :title="reviewWordIds.has(pb.currentWord.id) ? '移出生词本' : '加入生词本'" @click="toggleReview(pb.currentWord)">
           <img class="like-icon like-icon-lg" :src="reviewWordIds.has(pb.currentWord.id) ? likeOnIcon : likeOffIcon"
             alt="">
         </button>
@@ -376,10 +452,18 @@ import modeSingleIcon from '../assets/mode-single.png'
 import modeShuffleIcon from '../assets/mode-shuffle.png'
 import likeOnIcon from '../assets/like-on.png'
 import likeOffIcon from '../assets/like-off.png'
+import guestAvatarIcon from '../assets/用户.png'
 
 const electronAPI = window.electronAPI
 
 const user = ref(null)
+const userControlRef = ref(null)
+const showAccountMenu = ref(false)
+const showLoginPanel = ref(false)
+const loginUsername = ref('')
+const loginPassword = ref('')
+const loginLoading = ref(false)
+const loginError = ref('')
 const libraries = ref([])
 const publicLibraries = ref([])
 const favorites = ref([])
@@ -402,8 +486,8 @@ const renameText = ref('')
 const ownCollapsed = ref(false)
 const favCollapsed = ref(false)
 
-// 系统默认词库：不可改名/删除；未掌握=复习清单（对标"我喜欢"歌单）
-const PROTECTED_LIBS = ['默认收藏', '未掌握']
+// 系统默认词库：不可改名/删除；生词本=另一个独立的收藏目标（对标"我喜欢"歌单）
+const PROTECTED_LIBS = ['默认收藏', '生词本']
 const reviewWordIds = ref(new Set())
 
 const toast = ref('')
@@ -411,6 +495,7 @@ let toastTimer = null
 let unsubscribe = null
 let unsubscribeAudio = null
 let unsubscribeCollected = null
+let unsubscribeLoggedOut = null
 
 // 主进程播放状态镜像
 const pb = reactive({
@@ -440,6 +525,72 @@ function onDocumentClick(e) {
   if (showIntervalSlider.value && !intervalControlRef.value?.contains(e.target)) {
     showIntervalSlider.value = false
   }
+  if ((showAccountMenu.value || showLoginPanel.value) && !userControlRef.value?.contains(e.target)) {
+    showAccountMenu.value = false
+    showLoginPanel.value = false
+  }
+}
+
+// ---------- 账号：内嵌登录/注册 + 账号下拉菜单，不再用单独的登录窗口 ----------
+async function submitLogin() {
+  if (loginLoading.value) return
+  loginLoading.value = true
+  loginError.value = ''
+  try {
+    const res = await http.post('/auth/login', {
+      username: loginUsername.value,
+      password: loginPassword.value
+    })
+    if (res.data.code === 200) {
+      await finishAuth(res.data.data)
+    } else {
+      loginError.value = res.data.msg
+    }
+  } catch (e) {
+    loginError.value = '登录失败，请检查网络'
+  } finally {
+    loginLoading.value = false
+  }
+}
+
+async function submitRegister() {
+  if (loginLoading.value) return
+  loginLoading.value = true
+  loginError.value = ''
+  try {
+    const res = await http.post('/auth/register', {
+      username: loginUsername.value,
+      password: loginPassword.value
+    })
+    if (res.data.code === 200) {
+      await finishAuth(res.data.data)
+    } else {
+      loginError.value = res.data.msg
+    }
+  } catch (e) {
+    loginError.value = '注册失败，请检查网络'
+  } finally {
+    loginLoading.value = false
+  }
+}
+
+async function finishAuth({ token, user: loggedInUser }) {
+  await electronAPI?.setToken(token)
+  user.value = loggedInUser
+  showLoginPanel.value = false
+  loginUsername.value = ''
+  loginPassword.value = ''
+  // 登录/注册成功后补拉一遍依赖账号的数据（之前未登录时这些是空的）
+  await Promise.all([fetchLibraries(), fetchFavorites(), fetchReviewWordIds()])
+}
+
+function logout() {
+  electronAPI?.clearToken()
+  user.value = null
+  showAccountMenu.value = false
+  libraries.value = []
+  favorites.value = []
+  reviewWordIds.value = new Set()
 }
 
 // 播放模式：点击循环切换，只显示图标（列表循环 → 单词循环 → 随机）
@@ -472,7 +623,7 @@ const isOwnLibraryView = computed(() =>
   libraries.value.some((l) => l.id === activeLibraryId.value)
 )
 
-// 默认词库（默认收藏、未掌握）置顶
+// 默认词库（默认收藏、生词本）置顶
 const sortedLibraries = computed(() =>
   [...libraries.value].sort((a, b) => {
     const ia = PROTECTED_LIBS.indexOf(a.name)
@@ -481,7 +632,8 @@ const sortedLibraries = computed(() =>
   })
 )
 
-const reviewLib = computed(() => libraries.value.find((l) => l.name === '未掌握') || null)
+const reviewLib = computed(() => libraries.value.find((l) => l.name === '生词本') || null)
+const defaultLib = computed(() => libraries.value.find((l) => l.name === '默认收藏') || null)
 
 // 当前视图对应的公共词库（头部显示收藏按钮）
 const activePublicLib = computed(() =>
@@ -702,7 +854,7 @@ function togglePlay() {
   electronAPI?.setPlaying(!pb.playing)
 }
 
-// ---------- 未掌握（复习）标记 ----------
+// ---------- 生词本标记 ----------
 async function fetchReviewWordIds() {
   if (!reviewLib.value) return
   const res = await http.get(`/libraries/${reviewLib.value.id}/words`, {
@@ -722,9 +874,29 @@ async function toggleReview(word) {
     const next = new Set(reviewWordIds.value)
     marked ? next.delete(word.id) : next.add(word.id)
     reviewWordIds.value = next
-    showToast(marked ? `已掌握「${word.word}」` : `「${word.word}」已加入未掌握`)
-    // 正在看未掌握词库时，标记已掌握直接从列表移除
+    showToast(marked ? `已从生词本移出「${word.word}」` : `「${word.word}」已加入生词本`)
+    // 正在看生词本时，移出直接从列表移除
     if (marked && activeLibraryId.value === reviewLib.value.id) {
+      words.value = words.value.filter((w) => w.id !== word.id)
+      viewTotal.value = Math.max(0, viewTotal.value - 1)
+    }
+    fetchLibraries()
+  } else {
+    showToast(res.data.msg)
+  }
+}
+
+// ---------- 默认收藏标记 ----------
+async function toggleWordFavorite(word) {
+  if (!defaultLib.value) return
+  const marked = !!word.favorited
+  const url = marked ? '/libraries/remove-word' : '/libraries/add-word'
+  const res = await http.post(url, { library_id: defaultLib.value.id, word_id: word.id })
+  if (res.data.code === 200) {
+    word.favorited = !marked
+    showToast(marked ? `已从默认收藏移出「${word.word}」` : `「${word.word}」已加入默认收藏`)
+    // 正在看默认收藏时，移出直接从列表移除
+    if (marked && activeLibraryId.value === defaultLib.value.id) {
       words.value = words.value.filter((w) => w.id !== word.id)
       viewTotal.value = Math.max(0, viewTotal.value - 1)
     }
@@ -859,6 +1031,14 @@ onMounted(async () => {
     fetchLibraries()
     if (word && word.word) showToast(`已收藏「${word.word}」`)
   })
+  // token 失效（401）：主进程广播，本地直接切回登录态，不用再等重开窗口
+  unsubscribeLoggedOut = electronAPI?.onLoggedOut(() => {
+    user.value = null
+    showAccountMenu.value = false
+    libraries.value = []
+    favorites.value = []
+    reviewWordIds.value = new Set()
+  })
 
   fetchUser()
   fetchPublicLibraries()
@@ -872,6 +1052,7 @@ onBeforeUnmount(() => {
   if (unsubscribe) unsubscribe()
   if (unsubscribeAudio) unsubscribeAudio()
   if (unsubscribeCollected) unsubscribeCollected()
+  if (unsubscribeLoggedOut) unsubscribeLoggedOut()
   clearTimeout(toastTimer)
   document.removeEventListener('click', onDocumentClick)
 })
@@ -944,16 +1125,36 @@ onBeforeUnmount(() => {
   -webkit-app-region: drag;
 }
 
+.user-control {
+  position: relative;
+  padding-bottom: 12px;
+}
+
 .user {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 4px 16px 16px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+
+.user:hover {
+  background: var(--bg-raised);
+}
+
+.user-guest .avatar-placeholder {
+  background: var(--bg-raised);
+  color: var(--dim);
+}
+
+.user-guest .user-name {
+  color: var(--dim);
 }
 
 .avatar {
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   overflow: hidden;
   background: var(--accent-soft);
@@ -971,12 +1172,136 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
+/* 游客占位头像是线框小人图标，铺满整个圆反而显挤，缩小一圈留出边距 */
+.avatar-placeholder img {
+  width: 65%;
+  height: 65%;
+  object-fit: contain;
+}
+
 .user-name {
   font-size: 14px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% - 8px);
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+.account-menu-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.account-menu-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.account-menu-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.account-menu-logout {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  border: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  color: var(--dim);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.account-menu-logout:hover {
+  color: var(--text);
+}
+
+.login-panel {
+  position: absolute;
+  top: calc(100% - 8px);
+  left: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+
+.login-input {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-deep);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.login-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.login-btn {
+  flex: 1;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.login-btn.secondary {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.login-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.login-error {
+  font-size: 12px;
+  color: #f56c6c;
+  text-align: center;
 }
 
 .nav-section {
@@ -1030,7 +1355,17 @@ onBeforeUnmount(() => {
   line-height: 1;
 }
 
-/* 未掌握标记：已标记的红心常显，未标记 hover 才出现 */
+/* 默认收藏标记：已标记的星常显，未标记 hover 才出现 */
+.star-btn.on {
+  visibility: visible;
+  color: #f5c451;
+}
+
+.star-btn:hover {
+  color: #f5c451;
+}
+
+/* 生词本标记：已标记的红心常显，未标记 hover 才出现 */
 .heart-btn.on {
   visibility: visible;
 }
@@ -1320,6 +1655,19 @@ td.col-ops {
   color: var(--dim);
 }
 
+/* 日常用语表：短语较长容易换行，释义通常很短，两列平分宽度更均衡 */
+.col-phrase {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 15px;
+  font-weight: 600;
+  width: 50%;
+}
+
+.col-phrase-meaning {
+  width: 50%;
+  color: var(--dim);
+}
+
 tr.playing .col-meaning,
 tr.playing .col-phonetic {
   color: var(--accent);
@@ -1359,7 +1707,7 @@ tr.playing .col-phonetic {
 }
 
 .col-ops {
-  width: 84px;
+  width: 112px;
   text-align: right;
   white-space: nowrap;
   position: relative;
@@ -1499,6 +1847,17 @@ tr:hover .op-btn {
   font-weight: 700;
   color: rgba(255, 255, 255, 0.9);
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* 已收藏状态常驻显示在右上角，不需要 hover 才能看到 */
+.card-fav-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: #f5c451;
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
 }
 
 .card-hover {

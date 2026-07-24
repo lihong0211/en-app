@@ -1239,7 +1239,7 @@ git commit -m "feat: 前端共享 axios 实例，环境变量区分开发/生产
 ```vue
 <template>
   <div class="login">
-    <h1 class="title">记单词</h1>
+    <h1 class="title">learn-english</h1>
 
     <button class="wechat-btn" :disabled="loading" @click="loginWithWechat">
       微信扫码登录
@@ -1985,4 +1985,4 @@ npm run build
 
 - [ ] **Step 7: 验证 token 过期/清空后的行为**
 
-手动清空本地 token 文件（`~/Library/Application Support/your-app/auth.json` 写成 `{"token": null}`——`userData` 目录名取自 `package.json` 顶层的 `name` 字段 `your-app`，不是 `productName` 的"记单词"，这两个字段之前改名时特意没有同步），重新打开应用，应该又弹出登录窗口
+手动清空本地 token 文件（`~/Library/Application Support/your-app/auth.json` 写成 `{"token": null}`——`userData` 目录名取自 `package.json` 顶层的 `name` 字段 `your-app`，不是 `productName` 的"learn-english"，这两个字段之前改名时特意没有同步），重新打开应用，应该又弹出登录窗口
